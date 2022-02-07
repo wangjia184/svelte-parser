@@ -1,0 +1,59 @@
+<html>
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/comlink@4.3.1/dist/umd/comlink.min.js" 
+      integrity="sha256-AiLiB15o/W3S4qq0m8qYboBUdUQO99T2vnVRY2TyfcM=" crossorigin="anonymous">
+    </script>
+    <script src="./build/main.js"></script>
+  </head>
+  <body>
+    <script>
+
+      const urls = [ 'https://cdn.jsdelivr.net/npm/typescript@4.5.5/lib/typescript.min.js', './build/main.js'];
+      
+      const parserPromise = new Promise((resolve, reject) => {
+        Promise.all(urls.map( url => 
+          fetch(url, { method: 'GET', mode: 'cors'})
+            .then(response => response.text())
+        ))
+        .then( ([ts_source, worker_source]) => {
+       
+          const func = function(src, cb) {
+            const blob = new Blob([src], { type: 'text/javascript' });
+            const blobURL = URL.createObjectURL(blob);
+            import(blobURL).then( (mod) => {
+              self.typescript = mod; 
+              cb();
+            });
+          }.toString();
+
+
+          const encoded = ts_source.replaceAll( /[\r\n\t\'\"\\]/g, (c) => ("\\u" + c.charCodeAt(0).toString(16).padStart(4, '0')));
+          const blob = new Blob([ '(', func, ')("', encoded ,'", function(){', worker_source, '\n});', ], { type: 'text/javascript' });
+
+          const blobURL = URL.createObjectURL(blob);
+          const worker = new Worker(blobURL);
+          worker.onerror = (err) => { 
+            console.error("Error occured in worker", err);
+            reject(err);
+          };
+          const proxy = Comlink.wrap(worker);
+          resolve(proxy);
+        })
+        .catch( (err) => {
+          reject(err.message || err);
+          console.error(err);
+        });
+      });
+//*
+      parserPromise.then( (proxy) => {
+        setTimeout( function() {
+          proxy.parse(`dddd
+          <script lang="ts">
+            const x = (y : string) => {};
+            </` + 'script>');
+        }, 2000);
+        
+      });//*/
+    </script>
+  </body>
+</html>
